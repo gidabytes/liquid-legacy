@@ -12,6 +12,8 @@ Design rules (enforced here, not in the browser):
 """
 import argparse
 import base64
+import gzip
+import hashlib
 import json
 import os
 import re
@@ -77,6 +79,13 @@ MAX_BODY = 64 * 1024
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
 CHAT_HISTORY = {}
+
+# Static-asset compression is cached per (path, mtime, size) so a 200 KB legacy.js
+# is not re-compressed on every request from the A5 (compression is host CPU, but
+# the cache also keeps latency flat while Safari revalidates during a launch).
+GZIP_CACHE = {}
+GZIP_CACHE_MAX = 32
+TEXT_SUFFIXES = {".html", ".css", ".js", ".json", ".svg", ".txt"}
 
 
 def audit(action, session_id, detail, outcome):
@@ -243,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
     # ---------- static ----------
-    def _static(self, path):
+    def _static(self, path, query=""):
         rel = path[len("/ipad/legacy/"):] or "index.html"
         if rel.endswith("/"):
             rel += "index.html"
@@ -258,19 +267,49 @@ class Handler(BaseHTTPRequestHandler):
             ".crt": "application/x-x509-ca-cert", ".txt": "text/plain; charset=utf-8",
         }
         data = target.read_bytes()
+        suffix = target.suffix
+        etag = '"%s"' % hashlib.sha1(data).hexdigest()
+        # HTML is never cached (a new build must be picked up on the next launch).
+        # Any asset carried at a ?v=<build> URL is immutable: the URL changes when
+        # the build changes, so the A5 never pays a revalidation round trip for it.
+        if suffix == ".html":
+            cache_control = "no-store, no-cache, must-revalidate, max-age=0"
+        elif "v=" in (query or ""):
+            cache_control = "public, max-age=31536000, immutable"
+        else:
+            cache_control = "no-cache, must-revalidate, max-age=0"
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache_control)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        body = data
+        gzipped = False
+        accepts_gzip = "gzip" in (self.headers.get("Accept-Encoding") or "")
+        if accepts_gzip and suffix in TEXT_SUFFIXES and len(data) > 512:
+            key = (str(target), target.stat().st_mtime_ns, len(data))
+            body = GZIP_CACHE.get(key)
+            if body is None:
+                body = gzip.compress(data, 6)
+                if len(GZIP_CACHE) >= GZIP_CACHE_MAX:
+                    GZIP_CACHE.clear()
+                GZIP_CACHE[key] = body
+            gzipped = True
         self.send_response(200)
-        self.send_header("Content-Type", types.get(target.suffix, "application/octet-stream"))
-        self.send_header("Content-Length", str(len(data)))
-        # HTML must never be reused from the iOS standalone snapshot; assets may
-        # revalidate but never be served stale.
-        if target.suffix == ".html":
-            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Content-Type", types.get(suffix, "application/octet-stream"))
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", cache_control)
+        if gzipped:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+        if suffix == ".html":
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")
-        else:
-            self.send_header("Cache-Control", "no-cache, must-revalidate, max-age=0")
         self.end_headers()
-        self.wfile.write(data)
+        self.wfile.write(body)
 
     # ---------- API ----------
     def do_GET(self):
@@ -287,7 +326,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if u.path.startswith("/ipad/legacy/"):
-            return self._static(u.path)
+            return self._static(u.path, u.query)
 
         if u.path == API_PREFIX + "/health":
             up_ok, up_detail = False, None
@@ -331,6 +370,7 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == API_PREFIX + "/summary":
             if DEMO:
                 return self._json(200, DEMO_SUMMARY)
+            sid, s = self._session()
             if not s:
                 return self._err(401, "not authenticated")
             out = {"ok": True, "host": proc_metrics(), "datasets": {}, "errors": []}

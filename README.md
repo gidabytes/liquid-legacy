@@ -65,6 +65,35 @@ shell.
 | `run.sh` | Standalone launcher (demo mode) |
 | `deploy-ipad.sh` | Open/install on the iPad |
 | `install-service.sh` | systemd --user service |
+| `companion/tests/` | contract tests + WebKit perf/capture probes |
+| `scripts/device-bench.sh` | on-device benchmark (SSH + companion audit log) |
+| `docs/PERFORMANCE.md` | device measurements and method |
+
+## Performance (measured on a real iPad 2)
+
+The 2.28.0 build was measured on the device itself (A5, iOS 9.3.5, Safari 9 / WebKit 601):
+
+| Metric | before (2.27.2) | after (2.28.0) |
+|---|---|---|
+| warm launch, load event | 1360 ms | **91 ms** |
+| warm launch -> Home painted | ~1360 ms | **284 ms** |
+| static asset requests per warm launch | 15 | **0** (HTML + API only) |
+| DOM nodes at boot | 592 | **358** |
+
+How: immutable caching and gzip/ETag in the companion, `?v=` on every asset, lazy
+page rendering, no hidden-widget re-render on the poll, and 128x128 8-bit icons.
+Method and remaining costs: `docs/PERFORMANCE.md`.
+
+## Tests
+
+```bash
+./companion/tests/run_tests.sh          # 31 assertions: static, cache, auth, allowlist, audit
+```
+
+The runner needs a stub upstream and starts both processes itself. Optional probes:
+`companion/tests/perf-probe.py <url>` (WebKitGTK load/DOM/layout) and
+`companion/tests/webkit-capture.py` (screenshot; run under `xvfb-run`).
+`scripts/device-bench.sh` reproduces the on-device numbers over SSH.
 
 ## Honest limits
 

@@ -105,7 +105,7 @@
     if (String(checks[i][1]).indexOf("missing") < 0) passCount++;
   }
   el("rows").innerHTML = "<table>" + rows + "</table>";
-  el("build").innerHTML = "2.27.2";
+  el("build").innerHTML = "2.28.0";
   el("summary").innerHTML = "checks: " + checks.length + " · reported to companion";
 
   /* Measure the real app inside this page: same origin, so the frame is readable. */
@@ -113,7 +113,7 @@
   frame.style.cssText = "position:absolute;left:-9999px;top:0;width:768px;height:1024px;border:0";
   var q = location.search || "";
   var m = q.match(/[?&]app=([^&]+)/);
-  frame.src = m ? decodeURIComponent(m[1]) : "/ipad/legacy/?unlock=1&v=2.27.2#/home";
+  frame.src = m ? decodeURIComponent(m[1]) : "/ipad/legacy/?unlock=1&v=2.28.0#/home";
   document.body.appendChild(frame);
   var appCheck = { state: "pending" };
   setTimeout(function () {
@@ -276,7 +276,7 @@
     }, 50);
   }, 3500);
 
-  var report = { build: "2.27.2", ios: ios[1] || "?", checks: {} };
+  var report = { build: "2.28.0", ios: ios[1] || "?", checks: {} };
   for (i = 0; i < checks.length; i++) report.checks[checks[i][0]] = String(checks[i][1]);
   var json = JSON.stringify(report);
   try {

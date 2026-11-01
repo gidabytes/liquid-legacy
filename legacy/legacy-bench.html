@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Liquid Legacy — device benchmark</title>
+<style>
+  body { margin:0; padding:12px 14px 40px; background:#0b0f18; color:#e8edf6;
+         font:12px/1.45 -apple-system,Helvetica,Arial,sans-serif; }
+  h1 { font-size:14px; margin:0 0 2px; }
+  p.sub { color:#8e98a6; font-size:11px; margin:0 0 12px; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:4px 3px; border-bottom:1px solid rgba(255,255,255,0.08); vertical-align:top; }
+  td.k { color:#9aa4b2; width:58%; }
+  td.v { font-weight:600; text-align:right; }
+  #done { position:fixed; left:0; right:0; bottom:0; padding:8px 14px;
+          background:rgba(20,26,38,0.97); border-top:1px solid rgba(255,255,255,0.14); font-size:11px; }
+</style></head>
+<body>
+<h1>Liquid Legacy — device benchmark</h1>
+<p class="sub">Runs in the device engine and posts each stage to the companion audit log.
+Build <span id="b">?</span> · <span id="ua"></span></p>
+<div id="rows"></div>
+<div id="done">waiting…</div>
+<script>
+(function () {
+  "use strict";
+  var OUT = [], START = 0;
+  var build = (/[?&]b=([0-9.]+)/.exec(String(location.search)) || [])[1] || "?";
+  function el(id) { return document.getElementById(id); }
+  function now() { return (window.performance && performance.now) ? performance.now() : new Date().getTime(); }
+  function row(k, v) {
+    var tr = document.createElement("tr");
+    tr.innerHTML = '<td class="k">' + k + '</td><td class="v">' + v + "</td>";
+    el("rows").appendChild(tr);
+  }
+  function r1(n, d) { var f = Math.pow(10, d || 1); return Math.round(n * f) / f; }
+  function post(stage, obj) {
+    var text = "BENCH " + stage + " " + JSON.stringify(obj);
+    try {
+      var x = new XMLHttpRequest();
+      x.open("POST", "/api/legacy/v1/client-report", true);
+      x.setRequestHeader("Content-Type", "application/json");
+      x.send(JSON.stringify({ report: text }));
+    } catch (e) {}
+    OUT.push(text);
+    el("done").innerHTML = "last: " + stage + " · " + OUT.length + " reports";
+  }
+  function median(a) {
+    if (!a.length) return 0;
+    a = a.slice().sort(function (x, y) { return x - y; });
+    return a[Math.floor(a.length / 2)];
+  }
+  function pct(a, p) {
+    if (!a.length) return 0;
+    a = a.slice().sort(function (x, y) { return x - y; });
+    return a[Math.min(a.length - 1, Math.floor(a.length * p))];
+  }
+  function env() {
+    var ua = navigator.userAgent;
+    var e = {
+      vw: window.innerWidth, vh: window.innerHeight,
+      sw: screen.width, sh: screen.height, dpr: window.devicePixelRatio || 1,
+      standalone: (typeof navigator.standalone === "boolean") ? navigator.standalone : null,
+      ua: ua,
+      prefBlur: (function () {
+        var d = document.createElement("div");
+        d.style.setProperty("-webkit-backdrop-filter", "blur(4px)");
+        return (d.style.getPropertyValue("-webkit-backdrop-filter") || "") !== "";
+      })(),
+      unprefBlur: (function () {
+        var d = document.createElement("div");
+        d.style.setProperty("backdrop-filter", "blur(4px)");
+        return (d.style.getPropertyValue("backdrop-filter") || "") !== "";
+      })(),
+      rAF: typeof window.requestAnimationFrame === "function",
+      mem: (window.performance && performance.memory) ? 1 : 0
+    };
+    el("ua").innerHTML = (ua.match(/OS [0-9_]+/) || ["?"])[0] + " · " + e.vw + "x" + e.vh;
+    row("viewport", e.vw + "x" + e.vh + " · screen " + e.sw + "x" + e.sh + " · dpr " + e.dpr);
+    row("standalone", String(e.standalone));
+    row("prefixed backdrop-filter", e.prefBlur ? "yes" : "no");
+    row("unprefixed backdrop-filter", e.unprefBlur ? "yes" : "no");
+    post("env", e);
+    return e;
+  }
+  /* ---------- 1. JS compile cost (the A5 pays this on every cold load) ---------- */
+  function testCompile(next) {
+    var t0 = now(), x = new XMLHttpRequest();
+    x.open("GET", "/ipad/legacy/legacy.js?bench=" + now(), true);
+    x.onload = function () {
+      var t1 = now(), len = (x.responseText || "").length, comp = "ok", c0, c1;
+      try { c0 = now(); new Function(x.responseText); c1 = now(); }
+      catch (e) { comp = "error:" + String(e).substring(0, 60); c0 = c1 = now(); }
+      var r = { fetchMs: r1(t1 - t0, 0), len: len, compileMs: r1(c1 - c0, 1), compiled: comp };
+      row("legacy.js", r.len + " B · fetch " + r.fetchMs + " ms · compile " + r.compileMs + " ms");
+      post("compile", r);
+      next();
+    };
+    x.onerror = function () { post("compile", { error: "xhr" }); next(); };
+    x.send();
+  }
+  /* ---------- 2. CSS parse + first style/layout ---------- */
+  function testCss(next) {
+    var t0 = now(), x = new XMLHttpRequest();
+    x.open("GET", "/ipad/legacy/legacy.css?bench=" + now(), true);
+    x.onload = function () {
+      var t1 = now(), len = (x.responseText || "").length;
+      var st = document.createElement("style");
+      st.type = "text/css";
+      var probe = document.createElement("div");
+      probe.className = "card glass-regular";
+      probe.style.cssText = "position:absolute;left:-1500px;top:0;width:120px;height:80px";
+      document.body.appendChild(probe);
+      var t2 = now();
+      try { st.appendChild(document.createTextNode(x.responseText)); document.head.appendChild(st); }
+      catch (e) {}
+      var h = probe.offsetHeight;               /* force style recalc + layout */
+      var t3 = now();
+      var r = { fetchMs: r1(t1 - t0, 0), len: len, injectMs: r1(t2 - t1, 1), recalcMs: r1(t3 - t2, 1), h: h };
+      row("legacy.css", r.len + " B · fetch " + r.fetchMs + " ms · inject " + r.injectMs + " ms · layout " + r.recalcMs + " ms");
+      post("css", r);
+      probe.parentNode.removeChild(probe);
+      st.parentNode.removeChild(st);
+      next();
+    };
+    x.onerror = function () { post("css", { error: "xhr" }); next(); };
+    x.send();
+  }
+  /* ---------- 3. real app boot in a same-origin iframe ---------- */
+  function sampleFrame(f, started) {
+    var win = f.contentWindow, doc = win.document;
+    var t = win.performance ? win.performance.timing : null;
+    var r = { loadNow: r1(now() - started, 0) };
+    if (t && t.navigationStart) {
+      r.ttfb = t.responseStart - t.navigationStart;
+      r.down = t.responseEnd - t.responseStart;
+      r.dom = t.domInteractive - t.responseEnd;
+      r.dcl = t.domContentLoadedEventEnd - t.domInteractive;
+      r.load = t.loadEventEnd - t.domContentLoadedEventEnd;
+      r.total = t.loadEventEnd - t.navigationStart;
+    }
+    r.nodes = doc.getElementsByTagName("*").length;
+    r.bodyClass = String(doc.body.className || "").substring(0, 180);
+    r.icons = doc.querySelectorAll("#apps-grid .app").length;
+    r.build = (function () { var b = doc.getElementsByClassName("build"); return b.length ? b[0].textContent : "?"; })();
+    r.bootErrors = (win.__bootErrors || []).join(" || ").substring(0, 200);
+    r.diag = (doc.getElementById("diag") ? doc.getElementById("diag").textContent : "").substring(0, 160);
+    r.visible = (function () {
+      var out = [], ss = doc.getElementsByClassName("screen"), i, cs;
+      for (i = 0; i < ss.length; i++) { cs = win.getComputedStyle(ss[i]); if (cs.display !== "none") out.push(ss[i].id); }
+      return out.join(",");
+    })();
+    r.appW = doc.getElementById("app") ? Math.round(doc.getElementById("app").getBoundingClientRect().width) : null;
+    r.appH = doc.getElementById("app") ? Math.round(doc.getElementById("app").getBoundingClientRect().height) : null;
+    try {
+      var grid = doc.getElementById("apps-grid"), i2, l0 = now();
+      if (grid) for (i2 = 0; i2 < 60; i2++) { grid.style.paddingTop = (i2 % 2) + "px"; grid.offsetHeight; }
+      r.layout60 = r1(now() - l0, 1);
+    } catch (eL) { r.layout60 = "err"; }
+    return r;
+  }
+  function bootProbe(f, started, label, next) {
+    var tries = 0, done = false;
+    function tick() {
+      if (done) return;
+      var r;
+      try { r = sampleFrame(f, started); }
+      catch (e) { r = { error: String(e).substring(0, 140), loadNow: r1(now() - started, 0) }; }
+      /* the session check is async: "ready" is the first moment a screen is
+         actually shown, which is what the user perceives as app launch. */
+      if (!r.error && (!r.visible || r.visible === "login") && tries < 40) { tries++; setTimeout(tick, 50); return; }
+      done = true;
+      r.readyMs = r1(now() - started, 0);
+      r.tries = tries;
+      row(label, (r.total || r.loadNow) + " ms load · " + r.readyMs + " ms ready · DOM " + r.nodes);
+      post(label === "app boot" ? "boot" : "boot2", r);
+      try { f.parentNode.removeChild(f); } catch (e2) {}
+      next();
+    }
+    f.onload = tick;
+    document.body.appendChild(f);
+    setTimeout(tick, 12000);
+  }
+  function testBoot(next) {
+    var f = document.createElement("iframe"), started = now();
+    f.setAttribute("scrolling", "no");
+    f.style.cssText = "position:absolute;left:-1200px;top:0;width:1024px;height:768px;border:0";
+    f.src = "/ipad/legacy/?unlock=1&bench=1&b=" + build + "#/home";
+    bootProbe(f, started, "app boot", next);
+  }
+  function testBoot2(next) {
+    var f = document.createElement("iframe"), started = now();
+    f.setAttribute("scrolling", "no");
+    f.style.cssText = "position:absolute;left:-1200px;top:0;width:1024px;height:768px;border:0";
+    f.src = "/ipad/legacy/?unlock=1&bench=2&b=" + build + "#/home";
+    bootProbe(f, started, "warm boot", next);
+  }
+  /* ---------- 4. compositor cost of backdrop blur while the surface moves ---------- */
+  function frameRun(blur, radius, done) {
+    var stage = document.createElement("div");
+    stage.style.cssText = "position:fixed;left:0;top:0;width:1024px;height:260px;z-index:99999;" +
+      "overflow:hidden;background:-webkit-linear-gradient(120deg,#123 0%,#345 45%,#8a5 100%)";
+    var blob = document.createElement("div");
+    blob.style.cssText = "position:absolute;left:40px;top:30px;width:200px;height:120px;border-radius:60px;" +
+      "background:rgba(255,140,60,0.55)";
+    var glass = document.createElement("div");
+    var base = "position:absolute;left:20px;top:80px;width:564px;height:72px;border-radius:24px;" +
+      "background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.20);";
+    glass.style.cssText = base;
+    if (blur) {
+      glass.style.setProperty("-webkit-backdrop-filter", "blur(" + radius + "px) saturate(1.5)");
+      glass.style.setProperty("backdrop-filter", "blur(" + radius + "px) saturate(1.5)");
+    }
+    stage.appendChild(blob); stage.appendChild(glass);
+    document.body.appendChild(stage);
+    var frames = 0, deltas = [], t0 = now(), last = 0;
+    function step(t) {
+      if (!last) last = t;
+      deltas.push(t - last); last = t;
+      frames++;
+      var p = ((t - t0) % 1200) / 1200;
+      glass.style.webkitTransform = "translate3d(" + Math.round(p * 300) + "px,0,0)";
+      if (t - t0 < 2000) window.requestAnimationFrame(step);
+      else {
+        var el2 = (now() - t0);
+        var r = {
+          blur: blur ? radius : 0,
+          frames: frames,
+          fps: r1(frames / (el2 / 1000), 1),
+          medMs: r1(median(deltas), 1),
+          p95Ms: r1(pct(deltas, 0.95), 1),
+          maxMs: r1(pct(deltas, 1), 1)
+        };
+        row("compositor", (blur ? radius + "px blur" : "simulated") + " · " + r.fps + " fps · median " + r.medMs + " ms");
+        stage.parentNode.removeChild(stage);
+        post("paint", r);
+        done();
+      }
+    }
+    window.requestAnimationFrame(step);
+  }
+  /* ---------- 5. icon network vs decode cost ---------- */
+  function testIcons(next) {
+    var names = ["home","gids","chat","infra","alerts","status","settings","about",
+                 "calendar","notes","reminders","clock","calculator"];
+    var i = 0, total = 0, net = [], dec = [], dims = [], phase = "net";
+    var cur = null, tPhase = 0;
+    function post2() {
+      var r = {
+        count: names.length, bytes: total,
+        netMs: r1(net.reduce(function (a, b) { return a + b; }, 0), 0),
+        decodeMs: r1(dec.reduce(function (a, b) { return a + b; }, 0), 0),
+        net: net.join(","), dec: dec.join(","),
+        dims: dims.join(";")
+      };
+      row("icons", r.count + " · " + Math.round(total / 1024) + " KB · net " + r.netMs + " ms · decode " + r.decodeMs + " ms");
+      post("icons", r);
+      next();
+    }
+    function decodeStep() {
+      if (!cur) return;
+      tPhase = now();
+      var img = new Image();
+      img.onload = function () { dec.push(r1(now() - tPhase, 0)); dims.push(img.width + "x" + img.height); step(); };
+      img.onerror = function () { dec.push(-1); dims.push("ERR"); step(); };
+      img.src = cur;
+    }
+    function step() {
+      if (i >= names.length) return post2();
+      var name = names[i++], t = now(), x = new XMLHttpRequest();
+      x.open("GET", "/ipad/legacy/assets/icon-" + name + ".png?bench=" + now(), true);
+      x.responseType = "arraybuffer";
+      x.onload = function () {
+        net.push(r1(now() - t, 0));
+        var buf = x.response, bin = "", b, k;
+        if (buf) {
+          b = new Uint8Array(buf);
+          total += b.length;
+          for (k = 0; k < b.length; k++) bin += String.fromCharCode(b[k]);
+          try { cur = "data:image/png;base64," + btoa(bin); } catch (e) { cur = null; dec.push(-1); dims.push("b64ERR"); return step(); }
+        } else { cur = null; dec.push(-1); dims.push("noBuf"); return step(); }
+        decodeStep();
+      };
+      x.onerror = function () { net.push(-1); dec.push(-1); dims.push("netERR"); step(); };
+      x.send();
+    }
+    step();
+  }
+  /* ---------- run ---------- */
+  START = now();
+  el("b").innerHTML = build;
+  var E = env();
+  setTimeout(function () {
+    testCompile(function () {
+      testCss(function () {
+        testBoot(function () {
+          testBoot2(function () {
+            frameRun(false, 0, function () {
+              frameRun(true, 7, function () {
+                frameRun(true, 12, function () {
+                  testIcons(function () {
+                    post("done", { totalMs: r1(now() - START, 0), build: build });
+                    el("done").innerHTML = "done · " + r1(now() - START, 0) + " ms · " + OUT.length + " reports";
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  }, 250);
+})();
+</script>
+</body></html>

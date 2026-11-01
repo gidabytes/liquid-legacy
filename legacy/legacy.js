@@ -4,7 +4,7 @@
   "use strict";
 
   var API = "/api/legacy/v1";
-  var BUILD = "2.27.2";
+  var BUILD = "2.28.0";
   var state = {
     user: null, route: "#/home", page: 0,
     theme: "ios26", look: "dark", appearance: "dark", accent: "blue",
@@ -34,6 +34,18 @@
     { id: "calculator",name: "Calculator",   icon: "assets/icon-calculator.png",target:"#/calculator", cat: "Utilities" }
   ];
   var FOLDERS = [{ name: "System", apps: ["settings", "about"] }];
+
+  /* Versioned asset URL. The companion serves ?v=<build> assets as immutable, so
+     the iPad 2 spends no revalidation round trips on icons it already has, and a
+     build bump invalidates them automatically. */
+  function asset(p) {
+    if (!p) return p;
+    return p + (p.indexOf("?") < 0 ? "?v=" : "&v=") + BUILD;
+  }
+  (function () {
+    var i;
+    for (i = 0; i < APPS.length; i++) APPS[i].icon = asset(APPS[i].icon);
+  })();
 
   /* ---------------- application registry (Phase 1) ----------------
      Built-in Liquid Legacy apps + official external launchers + user web apps.
@@ -501,7 +513,10 @@
           setTimeout(function () { state.bannerShown = false; }, 5000);
         }
       })();
-      renderWidgets();
+      /* Widgets live on Home page 1 only. Rebuilding five widget bodies every
+         poll while the user sits on page 0 was pure A5 reflow work; open the
+         page and setPage(1) renders them from the freshest poll data. */
+      if (state.route === "#/home" && state.page === 1) renderWidgets();
       renderChrome();
       if (state.route === "#/gids") renderDataset("gids_summary", "gids-body", "gids-stamp", "AETG posture");
       if (state.route === "#/infra") renderDataset("collectors", "infra-body", "infra-stamp", "Collectors");
@@ -703,7 +718,7 @@
   }
   function dockIcon(id, restore, sizeOverride, gapOverride) {
     var p = dockPrefs(), a = findApp(id), name, icon, target;
-    if (id === "home") { name = "Home"; icon = "assets/icon-home.png"; target = "#/home"; }
+    if (id === "home") { name = "Home"; icon = asset("assets/icon-home.png"); target = "#/home"; }
     else if (a) { name = a.name; icon = a.icon; target = a.target; }
     else if (registryFind(id)) { var re = registryFind(id); name = re.name; icon = ""; target = re.url; }
     else return "";
@@ -3021,7 +3036,7 @@
     }
     var h = state.data.host;
     if (h && h.host && (!query || "host status memory disk".indexOf(query) >= 0 || h.host.toLowerCase().indexOf(query) >= 0)) {
-      html += '<div class="spot-row" data-target="#/status"><img src="assets/icon-status.png" alt="">' +
+      html += '<div class="spot-row" data-target="#/status"><img src="' + asset("assets/icon-status.png") + '" alt="">' +
               "Host Status<small>" + esc(h.host) + " · load " + esc(h.load1) + "</small></div>";
       n++;
     }
@@ -3959,8 +3974,9 @@
       if (LOCK.locked) showLock();
 
       renderHome();
-      renderAppLibrary();
-      renderWidgets();
+      /* Pages 1–3 and the App Library are rendered by setPage() when first shown.
+         Rendering them here made every launch pay for 50 library tiles and five
+         widgets the user could not see — measurable as ~200 ms of boot on the A5. */
       renderChrome();
 
       $("login-btn").onclick = doLogin;
