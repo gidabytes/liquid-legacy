@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    /* boot diagnostics: capture errors that happen before the app's own handler exists */
+    window.__bootErrors = [];
+    window.onerror = function (m, src, line, col) {
+      try { window.__bootErrors.push(String(m) + " @" + line + ":" + col); } catch (e) {}
+      return false;
+    };
+  </script>
+<meta charset="utf-8">
+<title>Liquid Legacy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Liquid Legacy">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="assets/touch-icon.png?v=2.27.2">
+<link rel="icon" href="assets/touch-icon.png?v=2.27.2">
+<link rel="stylesheet" href="legacy.css?v=2.27.2">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== status bar ===== -->
+  <div id="banner"></div>
+  <div id="statusbar">
+    <div id="sb-left"><span id="sb-clock">--:--</span></div>
+    <div id="sb-right">
+      <span id="sb-search" class="sb-btn" title="Search">&#9906;</span>
+      <span id="sb-conn" class="conn-dot" title="connection"></span>
+      <span id="sb-host">&#8212;</span>
+    </div>
+  </div>
+
+  <div id="netbanner" style="display:none">Connection lost — retrying…</div>
+
+  <!-- ===== lock screen ===== -->
+  <div id="lock" class="screen lock-screen">
+    <div class="lock-wall" id="lock-wall"></div>
+    <div class="lock-content" id="lock-content">
+      <div class="lock-clock" id="lock-clock">--:--</div>
+      <div class="lock-date" id="lock-date">&#8212;</div>
+      <div class="lock-sub" id="lock-sub"></div>
+      <div class="lock-notes" id="lock-notes"></div>
+    </div>
+    <div class="lock-hint" id="lock-hint">&#9650; Swipe up to unlock</div>
+  </div>
+
+  <!-- ===== login ===== -->
+  <div id="login" class="screen">
+    <div class="login-card">
+      <div class="login-logo">Liquid Legacy</div>
+      <div class="login-sub">iPadOS 26.7.2 experience &#183; iPad 2</div>
+      <input id="login-user" type="text" placeholder="Username" autocapitalize="off" autocorrect="off">
+      <input id="login-pass" type="password" placeholder="Password">
+      <button id="login-btn" class="btn-primary">Sign in</button>
+      <div id="login-error" class="login-error"></div>
+      <div class="login-note">Read-only monitoring session. Every action is audited.<br><span style="color:#5f6874">build v2.27.2</span></div>
+    </div>
+  </div>
+
+  <!-- ===== home ===== -->
+  <div id="home" class="screen">
+    <div id="pages">
+
+      <!-- page 0: apps -->
+      <div class="page" id="page-0">
+        <div class="grid" id="apps-grid"></div>
+      </div>
+
+      <!-- page 1: widgets -->
+      <div class="page" id="page-1">
+        <div class="widgets" id="widgets-grid">
+          <div class="widget w-clock" data-w="clock"><h3>Now</h3><div class="w-body" id="w-clock-body">—</div></div>
+          <div class="widget" data-w="host"><h3>Host</h3><div class="w-body" id="w-host-body">—</div></div>
+          <div class="widget" data-w="gids"><h3>GIDS</h3><div class="w-body" id="w-gids-body">—</div></div>
+          <div class="widget" data-w="alerts"><h3>Alerts</h3><div class="w-body" id="w-alerts-body">—</div></div>
+          <div class="widget w-wide" data-w="collectors"><h3>Collectors</h3><div class="w-body" id="w-coll-body">—</div></div>
+        </div>
+      </div>
+
+      <!-- page 2: app library -->
+      <div class="page" id="page-2">
+        <div class="lib-head">
+          <input id="lib-search" type="search" placeholder="Search applications" autocapitalize="none">
+          <div id="lib-chips" class="lib-chips"></div>
+        </div>
+        <div id="applib" class="applib"></div>
+      </div>
+
+      <div class="page" id="page-3">
+        <div id="dash" class="dash"></div>
+      </div>
+
+
+    </div>
+
+    <div id="dots">
+      <span class="dot active" data-page="0"></span>
+      <span class="dot" data-page="1"></span>
+      <span class="dot" data-page="2"></span>
+      <span class="dot" data-page="3"></span>
+    </div>
+
+    <div id="dock">
+      <a class="dock-app" data-target="#/home"><img src="assets/icon-home.png" alt=""><span>Home</span></a>
+      <a class="dock-app" data-target="#/gids"><img src="assets/icon-gids.png" alt=""><span>GIDS</span></a>
+      <a class="dock-app" data-target="#/chat"><img src="assets/icon-chat.png" alt=""><span>Genie</span></a>
+      <a class="dock-app" data-target="#/settings"><img src="assets/icon-settings.png" alt=""><span>Settings</span></a>
+    </div>
+  </div>
+
+  <!-- Phase 3 built-in applications -->
+  <div id="calendar" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Calendar</span><span class="navright" id="cal-stamp"></span></div>
+    <div class="scroll" id="cal-body"></div>
+  </div>
+  <div id="notes" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Notes</span><span class="navright" id="note-stamp"></span></div>
+    <div class="scroll" id="note-body"></div>
+  </div>
+  <div id="reminders" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Reminders</span><span class="navright" id="rem-stamp"></span></div>
+    <div class="scroll" id="rem-body"></div>
+  </div>
+  <div id="clock" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Clock</span><span class="navright" id="clock-stamp"></span></div>
+    <div class="scroll" id="clock-body"></div>
+  </div>
+  <div id="calculator" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Calculator</span><span class="navright" id="calc-stamp"></span></div>
+    <div class="scroll" id="calc-body"></div>
+  </div>
+
+  <!-- ===== panels ===== -->
+  <div id="gids" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">GIDS</span><span class="navright" id="gids-stamp">—</span></div>
+    <div class="scroll" id="gids-body"><div class="empty">Loading…</div></div>
+  </div>
+
+  <div id="infra" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Infrastructure</span><span class="navright" id="infra-stamp">—</span></div>
+    <div class="scroll" id="infra-body"><div class="empty">Loading…</div></div>
+  </div>
+
+  <div id="alerts" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Alerts</span><span class="navright" id="alerts-stamp">—</span></div>
+    <div class="scroll" id="alerts-body"><div class="empty">Loading…</div></div>
+  </div>
+
+  <div id="status" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Host Status</span><span class="navright" id="status-stamp">—</span></div>
+    <div class="scroll" id="status-body"><div class="empty">Loading…</div></div>
+  </div>
+
+  <div id="chat" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Genie</span><span class="navright" id="chat-state"></span></div>
+    <div class="scroll" id="chat-log"></div>
+    <div class="composer">
+      <input id="chat-input" type="text" placeholder="Ask Genie…" autocapitalize="sentences">
+      <button id="chat-send" class="btn-primary">Send</button>
+    </div>
+  </div>
+
+  <div id="settings" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">Settings</span><span class="navright"></span></div>
+    <div class="scroll" id="settings-body"></div>
+  </div>
+
+  <div id="about" class="screen panel-screen">
+    <div class="navbar"><a href="#/home" class="back">&#8249; Home</a><span class="navtitle">About</span><span class="navright"></span></div>
+    <div class="scroll" id="about-body"></div>
+  </div>
+
+  <!-- ===== control centre ===== -->
+  <div id="cc" class="overlay">
+    <div class="cc-panel">
+      <div class="cc-head">Control Centre <span id="cc-close">Done</span></div>
+
+      <div class="cc-group">
+        <div class="cc-tile" id="cc-conn"><b>&#9679;</b><span>Connection</span><em id="cc-conn-v">—</em></div>
+        <div class="cc-tile" id="cc-dnd"><b>&#9790;</b><span>Focus</span><em id="cc-dnd-v">off</em></div>
+      </div>
+
+      <div class="cc-group">
+        <div class="cc-tile" id="cc-theme"><b>Aa</b><span>Theme</span><em id="cc-theme-v">iOS 26.7.2</em></div>
+        <div class="cc-tile" id="cc-look"><b>&#9680;</b><span>Appearance</span><em id="cc-look-v">dark</em></div>
+      </div>
+
+      <div class="cc-label">Host load <span id="cc-load-v">—</span></div>
+      <div class="bar"><i id="cc-load-bar" style="width:0%"></i></div>
+      <div class="cc-label">Memory <span id="cc-mem-v">—</span></div>
+      <div class="bar"><i id="cc-mem-bar" style="width:0%"></i></div>
+      <div class="cc-label">Disk <span id="cc-disk-v">—</span></div>
+      <div class="bar"><i id="cc-disk-bar" style="width:0%"></i></div>
+
+      <div class="cc-group">
+        <div class="cc-slider"><label>Brightness</label>
+          <input id="cc-bright" type="range" min="0" max="100" value="70"></div>
+        <div class="cc-slider"><label>Volume</label>
+          <input id="cc-volume" type="range" min="0" max="100" value="40"></div>
+      </div>
+      <div class="cc-group cc-actions">
+        <a class="cc-btn" id="cc-media">No media</a>
+        <a class="cc-btn" id="cc-rec">Screen record</a>
+        <a class="cc-btn" id="cc-at">Accessibility</a>
+      </div>
+      <div class="cc-note">Brightness, volume and screen recording are <b>simulated</b> &#8212; a web app cannot control hardware. Every other tile acts on Liquid Legacy itself.</div>
+      <div class="cc-group cc-actions">
+        <a class="cc-btn cc-home-btn" id="cc-home">&#8962; Home</a>
+        <a class="cc-btn" id="cc-lock">&#128274; Lock</a>
+        <a class="cc-btn" href="#/settings">Settings</a>
+        <a class="cc-btn" href="#/status">Status</a>
+        <a class="cc-btn" href="#/alerts">Alerts</a>
+        <a class="cc-btn" id="cc-split">Split View</a>
+        <a class="cc-btn" id="cc-expose">Windows</a>
+        <a class="cc-btn" data-wm-layout="2">2-up</a>
+        <a class="cc-btn" data-wm-layout="3">3-up</a>
+        <a class="cc-btn" data-wm-layout="4">Quad</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== notification centre ===== -->
+  <div id="nc" class="overlay">
+    <div class="nc-panel">
+      <div class="nc-head"><span>Notifications</span><a href="#" id="nc-clear">Clear</a></div>
+      <div class="scroll" id="nc-body"><div class="empty">No notifications</div></div>
+      <div class="cc-close" id="nc-close">Done</div>
+    </div>
+  </div>
+
+  <!-- ===== spotlight ===== -->
+  <div id="spotlight" class="overlay">
+    <div class="spot-panel">
+      <input id="spot-input" type="text" placeholder="Search apps and data" autocapitalize="none" autocorrect="off">
+      <div class="scroll" id="spot-results"></div>
+      <div class="cc-close" id="spot-close">Cancel</div>
+    </div>
+  </div>
+
+  <!-- ===== context menu ===== -->
+  <div id="ctx" class="overlay">
+    <div class="ctx-panel" id="ctx-panel"></div>
+  </div>
+
+  <!-- ===== split view ===== -->
+  <div id="wgallery" class="overlay">
+    <div class="cc-panel" style="max-width:430px">
+      <div class="split-head">Widget gallery <span class="link" id="wg-close" style="cursor:pointer">Done</span></div>
+      <div id="wg-list"></div>
+    </div>
+  </div>
+  <div id="expose" class="overlay">
+    <div class="expose-panel">
+      <div class="split-head">App Windows <span id="expose-close">Done</span></div>
+      <div id="expose-body" class="expose-body"></div>
+    </div>
+  </div>
+  <div id="split" class="overlay">
+    <div class="split-panel">
+      <div class="split-head">Split View <span id="split-close">Done</span></div>
+      <div class="split-body">
+        <div class="split-col"><h3>GIDS</h3><div id="split-gids" class="kv">—</div></div>
+        <div class="split-col"><h3>Infrastructure</h3><div id="split-infra" class="kv">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== AssistiveTouch ===== -->
+  <div id="at-button" role="button" tabindex="0" aria-label="AssistiveTouch">
+    <span class="at-ring"></span><span class="at-dot"></span>
+  </div>
+  <div id="at-menu" class="overlay" role="menu" aria-label="AssistiveTouch menu">
+    <div class="at-panel">
+      <div class="at-title">AssistiveTouch <span id="at-close">Done</span></div>
+      <div class="at-grid">
+        <a class="at-item" data-at="home"    role="menuitem"><b>&#8962;</b><span>Home</span></a>
+        <a class="at-item" data-at="cc"      role="menuitem"><b>&#9635;</b><span>Control Centre</span></a>
+        <a class="at-item" data-at="nc"      role="menuitem"><b>&#9993;</b><span>Notifications</span></a>
+        <a class="at-item" data-at="search"  role="menuitem"><b>&#9906;</b><span>Search</span></a>
+        <a class="at-item" data-at="split"   role="menuitem"><b>&#9707;</b><span>Split View</span></a>
+        <a class="at-item" data-at="settings" role="menuitem"><b>&#9881;</b><span>Settings</span></a>
+        <a class="at-item" data-at="appear"  role="menuitem"><b>&#9680;</b><span>Appearance</span></a>
+        <a class="at-item" data-at="lock"    role="menuitem"><b>&#128274;</b><span>Lock Screen</span></a>
+        <a class="at-item" data-at="refresh" role="menuitem"><b>&#8635;</b><span>Refresh</span></a>
+      </div>
+      <div class="at-note">Simulated accessibility shortcut — not the iOS system AssistiveTouch.</div>
+    </div>
+  </div>
+
+  <div id="edge-cc"></div>
+  <div id="edge-nc"></div>
+</div>
+<script src="legacy.js?v=2.27.2"></script>
+</body>
+</html>

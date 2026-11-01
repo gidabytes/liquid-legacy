@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Golden Gate — legacy self-test</title>
+<style>
+  body { margin:0; padding:14px 16px 30px; background:#0b0f18; color:#e8edf6;
+         font:13px/1.5 -apple-system,Helvetica,Arial,sans-serif; }
+  h1 { font-size:15px; margin:0 0 4px; }
+  p.sub { color:#8e98a6; font-size:11px; margin:0 0 14px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td { padding:5px 4px; border-bottom:1px solid rgba(255,255,255,0.08); vertical-align:top; }
+  td.k { color:#9aa4b2; width:56%; }
+  td.v { font-weight:600; }
+  .pass { color:#7ee89a; } .fail { color:#ff9a9a; }
+  #summary { position:fixed; left:0; right:0; bottom:0; padding:10px 16px;
+             background:rgba(20,26,38,0.97); border-top:1px solid rgba(255,255,255,0.14); font-size:12px; }
+</style></head>
+<body>
+<h1>Golden Gate — legacy self-test</h1>
+<p class="sub">Runs on the device engine and reports back to the companion. Build <span id="build">?</span></p>
+<div id="rows"></div>
+<div id="summary">running…</div>
+<script>
+(function () {
+  "use strict";
+  function el(id) { return document.getElementById(id); }
+  function has(name) { try { return typeof window[name] !== "undefined"; } catch (e) { return false; } }
+  function css(prop, value) {
+    try { return window.CSS && CSS.supports ? CSS.supports(prop, value) : false; } catch (e) { return false; }
+  }
+  function styleSupports(prop, value) {
+    var d = document.createElement("div");
+    try { d.style[prop] = value; return d.style[prop] !== ""; } catch (e) { return false; }
+  }
+  var ua = navigator.userAgent;
+  var ios = (ua.match(/OS (\d+)_(\d+)/) || []);
+  /* accurate support probe: unsupported camelCase props stay undefined */
+  function supports(prop, value) {
+    var d = document.createElement("div");
+    try {
+      if (typeof d.style[prop] === "undefined" && !(prop in d.style)) {
+        d.style.setProperty(prop, value);
+        return d.style.getPropertyValue(prop) !== "";
+      }
+      d.style[prop] = value;
+      return typeof d.style[prop] !== "undefined" && d.style[prop] !== "";
+    } catch (e) { return false; }
+  }
+  function cssSupports(decl) {
+    try { return window.CSS && CSS.supports ? CSS.supports(decl) : false; } catch (e) { return false; }
+  }
+  function liveFilter() {
+    var d = document.createElement("div");
+    d.style.setProperty("-webkit-backdrop-filter", "blur(4px)");
+    d.style.setProperty("backdrop-filter", "blur(4px)");
+    document.body.appendChild(d);
+    var cs = getComputedStyle(d);
+    var v = cs.webkitBackdropFilter || cs.backdropFilter || "";
+    document.body.removeChild(d);
+    return v && v !== "none" ? v : "none";
+  }
+  var checks = [
+    ["userAgent", ua],
+    ["iOS major", ios[1] || "?"],
+    ["standalone", (navigator.standalone === true) ? "yes" : "no"],
+    ["viewport", window.innerWidth + "x" + window.innerHeight],
+    ["screen", screen.width + "x" + screen.height],
+    ["devicePixelRatio", String(window.devicePixelRatio || 1)],
+    ["localStorage", (function () { try { localStorage.setItem("gst", "1"); localStorage.removeItem("gst"); return "ok"; } catch (e) { return "blocked"; } })()],
+    ["XMLHttpRequest", has("XMLHttpRequest") ? "ok" : "missing"],
+    ["addEventListener", (typeof document.addEventListener === "function") ? "ok" : "missing"],
+    ["matchMedia", has("matchMedia") ? "ok" : "missing"],
+    ["performance.now", (window.performance && performance.now) ? "ok" : "missing"],
+    ["touch events", ("ontouchstart" in window) ? "ok" : "missing"],
+    ["classList", (document.body.classList ? "ok" : "missing")],
+    ["dataset", (document.body.dataset ? "ok" : "missing")],
+    ["Element.closest", (document.body.closest ? "present" : "absent")],
+    ["new Event()", (function () { try { return new Event("x") ? "ok" : "?"; } catch (e) { return "absent"; } })()],
+    ["Promise", has("Promise") ? "present" : "absent"],
+    ["fetch()", has("fetch") ? "present" : "absent"],
+    ["Object.assign", (Object.assign ? "present" : "absent")],
+    ["Array.from", (Array.from ? "present" : "absent")],
+    ["CSS.supports", (window.CSS && CSS.supports) ? "ok" : "absent"],
+    ["backdrop-filter (computed)", liveFilter()],
+    ["backdrop-filter (supports())", cssSupports("(backdrop-filter: blur(2px))") ? "supported" : "absent"],
+    ["-webkit-backdrop-filter", supports("WebkitBackdropFilter", "blur(2px)") ? "supported" : "absent"],
+    ["CSS grid", cssSupports("(display: grid)") ? "supported" : "absent"],
+    ["CSS var()", cssSupports("(color: var(--x))") ? "supported" : "absent"],
+    ["clamp()", cssSupports("(width: clamp(1px,2px,3px))") ? "supported" : "absent"],
+    ["aspect-ratio", cssSupports("(aspect-ratio: 1)") ? "supported" : "absent"],
+    ["position:sticky", cssSupports("(position: sticky)") ? "supported" : "absent"],
+    ["flex gap", cssSupports("(gap: 1px)") ? "supported" : "absent"],
+    ["flexbox", cssSupports("(display: flex)") ? "supported" : "absent"],
+    ["-webkit-filter", supports("WebkitFilter", "brightness(0.7)") ? "supported" : "absent"],
+    ["input range", (function () { var i = document.createElement("input"); i.type = "range"; return i.type === "range" ? "ok" : "coerced"; })()],
+    ["position:fixed", supports("position", "fixed") ? "ok" : "missing"],
+    ["orientation", (window.innerHeight > window.innerWidth) ? "portrait" : "landscape"],
+    ["html height", document.documentElement.getBoundingClientRect().height + "px"]
+  ];
+  var rows = "", i, passCount = 0;
+  for (i = 0; i < checks.length; i++) {
+    rows += '<tr><td class="k">' + checks[i][0] + '</td><td class="v">' + String(checks[i][1]) + "</td></tr>";
+    if (String(checks[i][1]).indexOf("missing") < 0) passCount++;
+  }
+  el("rows").innerHTML = "<table>" + rows + "</table>";
+  el("build").innerHTML = "2.27.2";
+  el("summary").innerHTML = "checks: " + checks.length + " · reported to companion";
+
+  /* Measure the real app inside this page: same origin, so the frame is readable. */
+  var frame = document.createElement("iframe");
+  frame.style.cssText = "position:absolute;left:-9999px;top:0;width:768px;height:1024px;border:0";
+  var q = location.search || "";
+  var m = q.match(/[?&]app=([^&]+)/);
+  frame.src = m ? decodeURIComponent(m[1]) : "/ipad/legacy/?unlock=1&v=2.27.2#/home";
+  document.body.appendChild(frame);
+  var appCheck = { state: "pending" };
+  setTimeout(function () {
+    try {
+      var doc = frame.contentDocument || frame.contentWindow.document;
+      var appEl = doc.getElementById("app");
+      var lock = doc.getElementById("lock");
+      var home = doc.getElementById("home");
+      var diag = doc.getElementById("diag");
+      var vis = [];
+      var screens = doc.getElementsByClassName("screen"), i2;
+      for (i2 = 0; i2 < screens.length; i2++) {
+        if (getComputedStyle(screens[i2]).display !== "none") vis.push(screens[i2].id);
+      }
+      /* layout QA without auth: reveal Home inside the frame and measure it */
+      var forced = {};
+      try {
+        if (home) {
+          home.style.display = "block";
+          var iconsEls = doc.querySelectorAll("#apps-grid .app");
+          var dockEl = doc.getElementById("dock");
+          var wg = doc.getElementsByClassName("widget")[0];
+          var ic0 = iconsEls[0] ? iconsEls[0].getBoundingClientRect() : null;
+          forced = {
+            iconW: ic0 ? Math.round(ic0.width) : null,
+            icons: iconsEls.length,
+            dock: dockEl ? (function (r) { return Math.round(r.left) + "," + Math.round(r.top) + " " + Math.round(r.width) + "x" + Math.round(r.height); })(dockEl.getBoundingClientRect()) : null,
+            dockBlur: dockEl ? (getComputedStyle(dockEl).webkitBackdropFilter || getComputedStyle(dockEl).backdropFilter || "none") : null,
+            widgetBlur: wg ? (getComputedStyle(wg).webkitBackdropFilter || getComputedStyle(wg).backdropFilter || "none") : null,
+            widgetW: wg ? Math.round(wg.getBoundingClientRect().width) : null,
+            iconStyle: (function () { var img = doc.querySelector("#apps-grid .app img"); return img ? (getComputedStyle(img).webkitFilter || getComputedStyle(img).filter || "none") : null; })()
+          };
+        }
+        var lk = doc.getElementById("lock");
+        if (lk) {
+          lk.style.display = "block";
+          var clock = doc.getElementById("lock-clock");
+          forced.lockClock = clock ? getComputedStyle(clock).fontSize : null;
+          forced.lockWall = lk.className;
+          lk.style.display = "none";
+        }
+      } catch (e4) { forced = { error: String(e4).substring(0, 80) }; }
+      /* touch semantics: does a touchstart on an icon get cancelled? */
+      var touchProbe = {};
+      try {
+        var pagesEl = doc.getElementById("pages");
+        touchProbe.handlerType = typeof (pagesEl && pagesEl.ontouchstart);
+        var tIcon = doc.querySelector("#apps-grid .app");
+        if (tIcon) {
+          var te;
+          try { te = new TouchEvent("touchstart", { bubbles: true, cancelable: true }); }
+          catch (e5) { te = doc.createEvent("Event"); te.initEvent("touchstart", true, true); }
+          var notCancelled = tIcon.dispatchEvent(te);
+          touchProbe.iconTouch = { prevented: te.defaultPrevented, delivered: notCancelled };
+        }
+        touchProbe.touchEventCtor = (typeof TouchEvent !== "undefined");
+      } catch (e6) { touchProbe.error = String(e6).substring(0, 80); }
+      var frameProbe = {};
+      try {
+        var fw = frame.contentWindow;
+        frameProbe.ggwm = typeof fw.GGWM;
+        frameProbe.bodyClass = (doc.body && doc.body.className || "").substring(0, 140);
+        frameProbe.scripts = (function () { var out = [], ss = doc.getElementsByTagName("script"); for (var si = 0; si < ss.length; si++) out.push(String(ss[si].src).split("/").pop()); return out; })();
+        frameProbe.loginDisplay = doc.getElementById("login") ? getComputedStyle(doc.getElementById("login")).display : null;
+        frameProbe.diag = (doc.getElementById("diag") ? doc.getElementById("diag").textContent : "").substring(0, 200);
+        frameProbe.boot = (fw.__bootErrors || []).join(" || ").substring(0, 260);
+      } catch (eF) { frameProbe.error = String(eF).substring(0, 120); }
+      appCheck = { frameProbe: frameProbe, touchProbe: touchProbe,
+        forced: forced,
+        appHeight: appEl ? Math.round(appEl.getBoundingClientRect().height) : null,
+        appWidth: appEl ? Math.round(appEl.getBoundingClientRect().width) : null,
+        homeDisplay: home ? getComputedStyle(home).display : null,
+        lockDisplay: lock ? getComputedStyle(lock).display : null,
+        visible: vis.join(","),
+        diag: diag ? (diag.textContent || "").substring(0, 80) : "(no diag element)",
+        bodyClass: doc.body.className,
+        cards: (function () { var c = doc.getElementsByClassName("card"); return c.length ? Math.round(c[0].getBoundingClientRect().width) : null; })(),
+        dock: (function () { var d = doc.getElementById("dock"); if (!d) return null;
+          var r = d.getBoundingClientRect(); return Math.round(r.left) + "," + Math.round(r.top) + " " + Math.round(r.width) + "x" + Math.round(r.height); })(),
+        icons: doc.querySelectorAll("#apps-grid .app").length,
+        lockVisible: lock ? getComputedStyle(lock).display !== "none" : null,
+        cardBlur: (function () {
+          var c = doc.getElementsByClassName("card")[0];
+          if (!c) return null;
+          var cs = getComputedStyle(c);
+          return (cs.webkitBackdropFilter || cs.backdropFilter || "none");
+        })(),
+        build: (function () { var b = doc.getElementsByClassName("build"); return b.length ? b[0].textContent : "?"; })()
+      };
+    } catch (e) {
+      appCheck = { state: "error", message: String(e).substring(0, 120) };
+    }
+    appCheck.state = "done";
+    var out = JSON.stringify({ report: appCheck });
+    try {
+      var x2 = new XMLHttpRequest();
+      x2.open("POST", "/api/legacy/v1/client-report", true);
+      x2.setRequestHeader("Content-Type", "application/json");
+      x2.send(JSON.stringify({ report: "APP " + out }));
+    } catch (e3) {}
+    document.getElementById("summary").innerHTML = "checks: " + checks.length + " · app probe: " + appCheck.state;
+
+    /* end-to-end press semantics on this device (always reports, even on error) */
+    function sendPress(obj) {
+      try {
+        var x3 = new XMLHttpRequest();
+        x3.open("POST", "/api/legacy/v1/client-report", true);
+        x3.setRequestHeader("Content-Type", "application/json");
+        x3.send(JSON.stringify({ report: "PRESS " + JSON.stringify(obj) }));
+      } catch (e8) {}
+    }
+    /* device-side parse check: fetch the real bundle and compile it here */
+    (function () {
+      try {
+        var xr = new XMLHttpRequest();
+        xr.open("GET", "/ipad/legacy/legacy.js?cb=" + new Date().getTime(), true);
+        xr.onload = function () {
+          var out = { stage: "parse", status: xr.status, len: (xr.responseText || "").length };
+          try {
+            new Function(xr.responseText);
+            out.compiled = "ok";
+          } catch (err) {
+            out.compiled = "error";
+            out.error = String(err).substring(0, 160);
+          }
+          out.ua = navigator.userAgent;
+          sendPress(out);
+        };
+        xr.onerror = function () { sendPress({ stage: "parse", status: "xhr-error" }); };
+        xr.send();
+      } catch (e12) { sendPress({ stage: "parse", status: "threw", error: String(e12).substring(0, 120) }); }
+    })();
+    setTimeout(function () {
+      var seq = { stage: "start" };
+      try {
+        var d2 = frame.contentDocument || frame.contentWindow.document;
+        var icon2 = d2.querySelector('#apps-grid .app[data-id="gids"]');
+        seq.icon = !!icon2;
+        if (icon2) {
+          var te2;
+          try { te2 = new TouchEvent("touchstart", { bubbles: true, cancelable: true }); }
+          catch (e11) { te2 = d2.createEvent("Event"); te2.initEvent("touchstart", true, true); }
+          icon2.dispatchEvent(te2);
+          seq.dispatched = true;
+          setTimeout(function () {
+            try {
+              seq.menuOpened = d2.getElementById("ctx").className.indexOf("open") >= 0;
+              seq.before = d2.location.hash;
+              var ce = d2.createEvent("MouseEvents");
+              ce.initMouseEvent("click", true, true, d2.defaultView, 1, 0, 0, 0, 0, false,false,false,false,0,null);
+              icon2.dispatchEvent(ce);
+              seq.after = d2.location.hash;
+              seq.navigated = seq.before !== seq.after;
+              seq.stage = "done";
+              sendPress(seq);
+            } catch (e9) { seq.stage = "click-error"; seq.error = String(e9).substring(0, 100); sendPress(seq); }
+          }, 750);
+        } else { sendPress(seq); }
+      } catch (e10) { seq.stage = "setup-error"; seq.error = String(e10).substring(0, 100); sendPress(seq); }
+    }, 50);
+  }, 3500);
+
+  var report = { build: "2.27.2", ios: ios[1] || "?", checks: {} };
+  for (i = 0; i < checks.length; i++) report.checks[checks[i][0]] = String(checks[i][1]);
+  var json = JSON.stringify(report);
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/legacy/v1/client-report", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.send(JSON.stringify({ report: json }));
+  } catch (e) {
+    el("summary").innerHTML = "could not report: " + e.message;
+  }
+})();
+</script>
+</body></html>
