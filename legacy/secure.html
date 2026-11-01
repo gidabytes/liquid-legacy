@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Golden Gate — Secure Session</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="assets/touch-icon.png">
+<style>
+html,body{margin:0;height:100%;background:#0b0d11;color:#fff;
+ font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+ -webkit-text-size-adjust:none;}
+.wrap{max-width:460px;margin:0 auto;padding:14vh 24px 0;text-align:center;}
+.badge{width:74px;height:74px;border-radius:18px;background:#0a84ff;margin:0 auto 18px;
+ line-height:74px;font-size:34px;font-weight:bold;}
+h1{font-size:20px;margin:0 0 8px;}
+p{font-size:13px;color:#9aa4b2;line-height:1.5;margin:0 0 22px;}
+a.btn{display:block;padding:15px 0;border-radius:11px;background:#0a84ff;color:#fff;
+ text-decoration:none;font-size:16px;font-weight:bold;}
+a.alt{display:block;margin-top:14px;font-size:12px;color:#7d8794;text-decoration:none;}
+.note{margin-top:22px;font-size:11px;color:#5f6874;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="badge">G</div>
+  <h1>Golden Gate Legacy</h1>
+  <p>Tap below to open the encrypted session.<br>The link forces <b>https://</b> so Safari cannot fall back to plain HTTP.</p>
+  <a class="btn" id="go" href="#">Open secure session</a>
+  <a class="alt" href="#http">Continue unencrypted (read-only LAN mode)</a>
+  <div class="note">If Safari shows a certificate warning, tap <b>Show Details → visit this website</b>.
+  The session is encrypted with TLS 1.2 and the Golden Gate Legacy CA you installed.</div>
+</div>
+<script>
+(function () {
+  var host = location.hostname;
+  var secure = "https://" + host + ":8443/ipad/legacy/";
+  var plain  = "http://" + host + ":8088/ipad/legacy/";
+  document.getElementById("go").href = secure;
+  var alt = document.querySelector("a.alt");
+  alt.href = plain;
+  /* if this page was reached over https, go straight in */
+  if (location.protocol === "https:") { location.replace(secure); }
+})();
+</script>
+</body>
+</html>
