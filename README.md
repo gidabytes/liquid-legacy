@@ -1,5 +1,9 @@
 # Liquid Legacy
 
+[![Latest release](https://img.shields.io/github/v/release/gidabytes/liquid-legacy?display_name=tag&sort=semver)](https://github.com/gidabytes/liquid-legacy/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![iPad 2 · iOS 9.3.5](https://img.shields.io/badge/target-iPad%202%20%C2%B7%20iOS%209.3.5-lightgrey)](docs/PERFORMANCE.md)
+
 **A Liquid Glass, iPadOS 26-inspired workspace that runs in the browser on an iPad 2 (A1395, iOS 9.3.5).**
 
 Liquid Legacy is a vanilla ES5 web app: no framework, no build step, no service worker.
@@ -84,6 +88,23 @@ How: immutable caching and gzip/ETag in the companion, `?v=` on every asset, laz
 page rendering, no hidden-widget re-render on the poll, and 128x128 8-bit icons.
 Method and remaining costs: `docs/PERFORMANCE.md`.
 
+## Screenshots
+
+Captured from the shipped build in WebKitGTK (ephemeral profile) at the iPad's own
+1024×768 / 768×1024 framebuffer sizes.
+
+| Home · dark | Home · light |
+|---|---|
+| ![Home dark](docs/screenshot.png) | ![Home light](docs/screenshot-light.png) |
+
+| App Library | Lock Screen |
+|---|---|
+| ![App Library](docs/screenshot-applib.png) | ![Lock Screen](docs/screenshot-lock.png) |
+
+Portrait (768×1024):
+
+![Home in portrait](docs/screenshot-portrait.png)
+
 ## Tests
 
 ```bash
@@ -102,6 +123,12 @@ The runner needs a stub upstream and starts both processes itself. Optional prob
 - No OAuth, no iframe embedding, no credential capture.
 - iOS 9.3.5 Safari is the target: ES5 only, prefixed CSS, no modern APIs.
 - Reminders, timers and alarms only fire while the page is open.
+
+## Releases
+
+Every tagged build is packaged as `liquid-legacy-<version>.tar.gz` on the
+[releases page](https://github.com/gidabytes/liquid-legacy/releases), with the
+per-version notes in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
